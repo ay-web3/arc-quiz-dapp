@@ -3,10 +3,7 @@
 <head>
   <title>Arc Quiz Rewards DApp</title>
 
-  <!-- Fonts -->
   <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600&display=swap" rel="stylesheet">
-
-  <!-- Ethers -->
   <script src="https://cdn.jsdelivr.net/npm/ethers@6.10.0/dist/ethers.umd.min.js"></script>
 
   <style>
@@ -44,9 +41,6 @@
       margin-top: 15px;
       border-radius: 8px;
     }
-    #leaderboardList li {
-      margin: 6px 0;
-    }
   </style>
 </head>
 
@@ -59,14 +53,12 @@
   <button id="connectBtn">Connect Wallet</button>
   <p id="status">Disconnected</p>
 
-  <!-- QUIZ (HIDDEN UNTIL CONNECT) -->
   <div id="quizSection" style="display:none">
     <div id="quiz"></div>
     <button id="submitBtn">Submit Page</button>
   </div>
 
   <hr>
-
   <h3>🏆 Leaderboard</h3>
   <p>Total Participants: <b id="participants">0</b></p>
   <ul id="leaderboardList"></ul>
@@ -81,30 +73,44 @@ const REWARD_PER_QUESTION = 0.2;
 
 /* ================= STATE ================= */
 
-let account = null;
+let account;
 let quiz = [];
-let page = 1;
-let totalEarned = 0;
+let state;
+
+/* ================= STORAGE ================= */
+
+function storageKey() {
+  return `arcQuiz_${account}`;
+}
+
+function loadState() {
+  const saved = localStorage.getItem(storageKey());
+  return saved ? JSON.parse(saved) : {
+    page: 1,
+    earned: 0,
+    answered: [],
+    completed: false
+  };
+}
+
+function saveState() {
+  localStorage.setItem(storageKey(), JSON.stringify(state));
+}
 
 /* ================= HELPERS ================= */
 
-function truncate(addr) {
-  return addr.slice(0, 6) + "..." + addr.slice(-4);
+function truncate(a) {
+  return a.slice(0, 6) + "..." + a.slice(-4);
 }
 
 /* ================= LOAD BALANCE ================= */
 
 async function loadBalance() {
-  try {
-    const r = await fetch(`${BACKEND}/balance`);
-    const d = await r.json();
-    document.getElementById("serverBalance").innerHTML =
-      `Reward Pool: <b>${d.usdc} USDC</b><br>
-       <small>Native Gas: ${d.native} USDC</small>`;
-  } catch {
-    document.getElementById("serverBalance").innerText =
-      "Backend Connection Error";
-  }
+  const r = await fetch(`${BACKEND}/balance`);
+  const d = await r.json();
+  document.getElementById("serverBalance").innerHTML =
+    `Reward Pool: <b>${d.usdc} USDC</b><br>
+     <small>Native Gas: ${d.native} USDC</small>`;
 }
 
 /* ================= LOAD QUIZ ================= */
@@ -112,66 +118,78 @@ async function loadBalance() {
 async function loadQuiz() {
   const r = await fetch(`${BACKEND}/quiz`);
   quiz = await r.json();
-  renderQuiz();
+
+  if (state.completed) {
+    showCompletion();
+  } else {
+    renderQuiz();
+  }
 }
 
-/* ================= RENDER QUIZ ================= */
+/* ================= RENDER ================= */
 
 function renderQuiz() {
-  const start = (page - 1) * QUESTIONS_PER_PAGE;
+  const start = (state.page - 1) * QUESTIONS_PER_PAGE;
   const end = Math.min(start + QUESTIONS_PER_PAGE, quiz.length);
 
   const box = document.getElementById("quiz");
-  box.innerHTML = `<h3>Page ${page}</h3>`;
+  box.innerHTML = `<h3>Page ${state.page}</h3>`;
 
   quiz.slice(start, end).forEach((q, i) => {
+    const idx = start + i;
     box.innerHTML += `
       <div class="quiz-box">
         <b>${q.question}</b><br><br>
         ${q.options.map(o => `
           <label>
-            <input type="radio" name="q${start + i}" value="${o}">
+            <input type="radio" name="q${idx}" value="${o}">
             ${o}
           </label>
         `).join("<br>")}
       </div>
     `;
   });
+
+  document.getElementById("submitBtn").disabled = false;
 }
 
-/* ================= SUBMIT PAGE ================= */
+/* ================= SUBMIT ================= */
 
 document.getElementById("submitBtn").onclick = async () => {
   document.getElementById("submitBtn").disabled = true;
 
-  const start = (page - 1) * QUESTIONS_PER_PAGE;
+  const start = (state.page - 1) * QUESTIONS_PER_PAGE;
   const end = Math.min(start + QUESTIONS_PER_PAGE, quiz.length);
 
   for (let i = start; i < end; i++) {
+    if (state.answered.includes(i)) continue;
+
     const selected = document.querySelector(`input[name="q${i}"]:checked`);
     if (!selected) continue;
 
     if (selected.value === quiz[i].answer) {
       const r = await fetch(`${BACKEND}/reward`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          userAddress: account,
-          questionIndex: i
-        })
+        headers: {"Content-Type":"application/json"},
+        body: JSON.stringify({ userAddress: account, questionIndex: i })
       });
 
       const d = await r.json();
-      if (d.success) totalEarned += REWARD_PER_QUESTION;
+      if (d.success) {
+        state.earned += REWARD_PER_QUESTION;
+        state.answered.push(i);
+      }
     }
   }
 
-  page++;
+  state.page++;
+  saveState();
 
-  if ((page - 1) * QUESTIONS_PER_PAGE < quiz.length) {
-    document.getElementById("submitBtn").disabled = false;
+  if ((state.page - 1) * QUESTIONS_PER_PAGE < quiz.length) {
     renderQuiz();
   } else {
+    state.completed = true;
+    saveState();
     showCompletion();
   }
 
@@ -179,14 +197,13 @@ document.getElementById("submitBtn").onclick = async () => {
   loadBalance();
 };
 
-/* ================= COMPLETION ================= */
+/* ================= COMPLETE ================= */
 
 function showCompletion() {
   document.getElementById("quizSection").innerHTML = `
     <h2>🎉 Congratulations!</h2>
-    <p>You have completed the Arc Quiz successfully.</p>
-    <h3>Total Earned: <b>${totalEarned.toFixed(2)} USDC</b></h3>
-    <p>Thanks for participating 🚀</p>
+    <p>You have completed the quiz.</p>
+    <h3>Total Earned: <b>${state.earned.toFixed(2)} USDC</b></h3>
   `;
 }
 
@@ -200,30 +217,21 @@ async function loadLeaderboard() {
 
   const list = document.getElementById("leaderboardList");
   list.innerHTML = "";
-
-  d.leaderboard.slice(0, 10).forEach((e, i) => {
-    list.innerHTML +=
-      `<li>#${i + 1} ${truncate(e.address)} — ${e.reward} USDC</li>`;
+  d.leaderboard.slice(0,10).forEach((e,i)=>{
+    list.innerHTML += `<li>#${i+1} ${truncate(e.address)} — ${e.reward} USDC</li>`;
   });
 }
 
-/* ================= WALLET CONNECT ================= */
+/* ================= CONNECT ================= */
 
 document.getElementById("connectBtn").onclick = async () => {
-  if (!window.ethereum) {
-    alert("Please install MetaMask");
-    return;
-  }
-
-  const accs = await window.ethereum.request({
-    method: "eth_requestAccounts"
-  });
-
+  const accs = await window.ethereum.request({ method: "eth_requestAccounts" });
   account = accs[0];
+
+  state = loadState();
 
   document.getElementById("status").innerText =
     "Connected: " + truncate(account);
-
   document.getElementById("connectBtn").disabled = true;
   document.getElementById("quizSection").style.display = "block";
 
