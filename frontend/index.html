@@ -4,459 +4,140 @@
   <title>Arc Quiz Rewards DApp</title>
   <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600&display=swap" rel="stylesheet">
   <style>
-    :root {
-      --color-primary: #6a0dad; /* Deep Purple */
-      --color-success: #00b300;
-      --color-error: #e63946;
-      --color-bg-light: #f4f6f8;
-      --color-border: #ddd;
-    }
-
     body {
-      font-family: 'Poppins', sans-serif;
-      background-color: var(--color-bg-light);
-      padding: 40px 20px;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      min-height: 100vh;
-      margin: 0;
+      font-family: Poppins, sans-serif;
+      background: #f4f6f8;
+      padding: 30px;
     }
-
-    .app-container {
-        width: 100%;
-        max-width: 650px;
-        background: white;
-        padding: 30px;
-        border-radius: 12px;
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    .app {
+      max-width: 700px;
+      background: #fff;
+      padding: 25px;
+      border-radius: 12px;
+      margin: auto;
     }
-    
-    h2 {
-        color: var(--color-primary);
-        text-align: center;
-        margin-bottom: 25px;
-    }
-
-    /* --- Status & Connection --- */
-    #topContainer {
-        border-bottom: 1px solid var(--color-border);
-        padding-bottom: 20px;
-        margin-bottom: 20px;
-    }
-
-    #status {
-      margin-top: 15px;
-      padding: 10px;
-      border: 1px solid var(--color-border);
-      background-color: #f9f9f9;
-      border-radius: 8px;
-    }
-    
-    .status-connected {
-        color: var(--color-success);
-        font-weight: 600;
-    }
-
-    /* --- Buttons --- */
     button {
-      padding: 12px 20px;
-      border-radius: 25px; 
-      font-weight: 600;
-      cursor: pointer;
-      background-color: var(--color-primary); 
-      color: white;
-      border: 2px solid var(--color-primary);
-      transition: background-color 0.3s ease, transform 0.1s;
+      padding: 12px;
       width: 100%;
       margin-top: 10px;
-    }
-
-    button:hover:not([disabled]) {
-      background-color: #4b0082; 
-    }
-    
-    button:active {
-        transform: scale(0.99);
-    }
-
-    button:disabled {
-      background-color: #cccccc;
-      border-color: #999999;
-      cursor: not-allowed;
-      color: #666;
-    }
-
-    /* --- Quiz Cards --- */
-    #quizSection {
-        display: none; /* Hidden until connected */
-    }
-
-    .quiz-container {
-      border: 1px solid var(--color-border);
-      padding: 15px;
-      margin-bottom: 15px;
-      border-radius: 8px;
-      transition: border-color 0.3s;
-    }
-    
-    .quiz-container.error-highlight {
-        border-color: var(--color-error);
-        box-shadow: 0 0 5px var(--color-error);
-    }
-
-    .question-options label {
-      display: block;
-      margin: 8px 0;
+      border-radius: 25px;
+      background: #6a0dad;
+      color: #fff;
+      border: none;
       cursor: pointer;
+      font-weight: 600;
     }
-    
-    /* --- Loader and Messages --- */
-    #loader {
-      display: none;
-      font-size: 16px;
-      color: var(--color-primary);
-      font-weight: bold;
+    .quiz-box {
+      border: 1px solid #ddd;
+      padding: 15px;
       margin-top: 15px;
-    }
-    
-    #serverBalance {
-      font-size: 16px;
-      color: var(--color-success);
-      margin-bottom: 15px;
-      padding: 10px;
-      border: 1px dashed var(--color-success);
       border-radius: 8px;
+    }
+    #leaderboardList li {
+      margin: 6px 0;
     }
   </style>
 </head>
+
 <body>
-  <div class="app-container">
-      <h2>Arc Reward Quiz</h2>
+<div class="app">
+  <h2>Arc Reward Quiz</h2>
 
-      <div id="topContainer">
-          <p><b> Reward Pool:</b></p>
-          <div id="serverBalance">Loading...</div>
-          
-          <button id="connectBtn">Connect Wallet</button>
+  <div id="serverBalance">Loading...</div>
+  <button id="connectBtn">Connect Wallet</button>
+  <p id="status">Disconnected</p>
 
-          <p id="status">Status: Disconnected</p>
+  <div id="quiz"></div>
+  <button id="submitBtn">Submit Page</button>
+
+  <hr>
+  <h3>🏆 Leaderboard</h3>
+  <p>Total Participants: <b id="participants">0</b></p>
+  <ul id="leaderboardList"></ul>
+</div>
+
+<script>
+const BACKEND = "http://localhost:3000";
+const QUESTIONS_PER_PAGE = 4;
+
+let account;
+let quiz = [];
+let page = 1;
+
+function truncate(a){return a.slice(0,6)+"..."+a.slice(-4)}
+
+async function loadBalance(){
+  const r = await fetch(`${BACKEND}/balance`);
+  const d = await r.json();
+  document.getElementById("serverBalance").innerHTML =
+    `Reward Pool: <b>${d.usdc} USDC</b><br><small>Native Gas: ${d.native} USDC</small>`;
+}
+
+async function loadQuiz(){
+  const r = await fetch(`${BACKEND}/quiz`);
+  quiz = await r.json();
+  render();
+}
+
+function render(){
+  const start = (page-1)*QUESTIONS_PER_PAGE;
+  const end = Math.min(start+QUESTIONS_PER_PAGE, quiz.length);
+  const box = document.getElementById("quiz");
+  box.innerHTML = `<h3>Page ${page}</h3>`;
+
+  quiz.slice(start,end).forEach((q,i)=>{
+    box.innerHTML += `
+      <div class="quiz-box">
+        <b>${q.question}</b>
+        ${q.options.map(o=>`
+          <label><input type="radio" name="q${start+i}" value="${o}"> ${o}</label>
+        `).join("<br>")}
       </div>
-      
-      <div id="quizSection">
-          <h3>🎯 Quiz Questions</h3>
-          <div id="quizContainer">Loading questions...</div>
+    `;
+  });
+}
 
-          <button id="submitQuizBtn" disabled>Submit Page & Claim Rewards</button>
-          <div id="loader"></div>
-      </div>
-  </div>
-  
-  <script>
-    const BACKEND = "https://arc-quiz-dapp.onrender.com"; 
-    const QUESTIONS_PER_PAGE = 4;
-    let userAccount = null;
-    let quizData = []; 
-    let currentPage = 1;
-    let totalPages = 0;
+document.getElementById("submitBtn").onclick = async ()=>{
+  const start = (page-1)*QUESTIONS_PER_PAGE;
+  const end = Math.min(start+QUESTIONS_PER_PAGE, quiz.length);
 
-    // --- Helper functions ---
-    function truncateAddress(address) {
-        if (!address) return '';
-        const start = address.substring(0, 6);
-        const end = address.substring(address.length - 4);
-        return `${start}...${end}`;
+  for(let i=start;i<end;i++){
+    const selected = document.querySelector(`input[name="q${i}"]:checked`);
+    if(selected && selected.value === quiz[i].answer){
+      await fetch(`${BACKEND}/reward`,{
+        method:"POST",
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({userAddress:account,questionIndex:i})
+      });
     }
-    
-    function toggleQuizSection(show) {
-        document.getElementById("quizSection").style.display = show ? 'block' : 'none';
-    }
-    
-    function updateLoader(message) {
-        const loader = document.getElementById("loader");
-        loader.innerHTML = message;
-        loader.style.display = 'block';
-    }
+  }
 
-    // --- State Management Functions ---
-    function saveState() {
-        if (!userAccount) return; 
-        const answers = {};
-        quizData.forEach((item, index) => {
-            const selectedRadio = document.querySelector(`input[name="question-${index}"]:checked`);
-            if (selectedRadio) {
-                answers[`q-${index}`] = selectedRadio.value;
-            }
-        });
-        
-        localStorage.setItem('quiz_state', JSON.stringify(answers));
-        localStorage.setItem('quiz_connected_address', userAccount);
-        localStorage.setItem('quiz_current_page', currentPage);
-    }
-    
-    function handleQuizComplete(finalReward) {
-        document.getElementById("status").innerHTML = `
-            <span style="color:var(--color-primary); font-weight:600">🎉 QUIZ COMPLETE!</span><br>
-            Total Reward Earned: <b>${finalReward} USDC</b>
-        `;
-        document.getElementById("submitQuizBtn").style.display = 'none';
-        document.getElementById("loader").style.display = 'none';
-        document.querySelectorAll('.quiz-container input').forEach(input => input.disabled = true);
-        toggleQuizSection(true); 
-    }
-    
-    function loadState() {
-        const claimedReward = localStorage.getItem('total_reward_claimed');
-        if (claimedReward && parseInt(localStorage.getItem('quiz_current_page')) > totalPages) {
-            return handleQuizComplete(claimedReward);
-        }
-        
-        const savedPage = parseInt(localStorage.getItem('quiz_current_page') || '1');
-        currentPage = savedPage;
-    }
+  page++;
+  if(start >= quiz.length) return;
+  render();
+  loadLeaderboard();
+};
 
-    // --- 1. Load Server USDC Balance ---
-    async function loadServerBalance() {
-      try {
-        const res = await fetch(`${BACKEND}/balance`); 
-        const data = await res.json();
-        
-        if (data.error || !data.success) {
-          document.getElementById("serverBalance").innerText = "Error Loading Balance";
-        } else {
-          document.getElementById("serverBalance").innerHTML = 
-            `Reward Pool: <b>${data.usdc} USDC</b><br>
-             <small>Native Gas: ${data.native} USDC</small>`;
-        }
-      } catch (e) {
-        document.getElementById("serverBalance").innerText = "Backend Connection Error";
-        console.error("Balance fetch error:", e);
-      }
-    }
+async function loadLeaderboard(){
+  const r = await fetch(`${BACKEND}/leaderboard`);
+  const d = await r.json();
+  document.getElementById("participants").innerText = d.participants;
+  const list = document.getElementById("leaderboardList");
+  list.innerHTML="";
+  d.leaderboard.slice(0,10).forEach((e,i)=>{
+    list.innerHTML += `<li>#${i+1} ${truncate(e.address)} — ${e.reward} USDC</li>`;
+  });
+}
 
-    // --- 2. Fetch Quiz Questions ---
-    async function fetchQuizQuestions() {
-        try {
-            const res = await fetch(`${BACKEND}/quiz`);
-            quizData = await res.json();
-            totalPages = Math.ceil(quizData.length / QUESTIONS_PER_PAGE);
-            loadState();
-            renderQuiz();
-        } catch (e) {
-            document.getElementById("quizContainer").innerHTML = "Error fetching quiz questions. Ensure backend is running.";
-            console.error("Quiz fetch error:", e);
-        }
-    }
+document.getElementById("connectBtn").onclick = async ()=>{
+  const acc = await window.ethereum.request({method:"eth_requestAccounts"});
+  account = acc[0];
+  document.getElementById("status").innerText = "Connected: "+truncate(account);
+};
 
-    // --- 3. Render Quiz Structure ---
-    function renderQuiz() {
-        if (!quizData.length) return;
-
-        const container = document.getElementById("quizContainer");
-        container.innerHTML = ''; 
-
-        const startIdx = (currentPage - 1) * QUESTIONS_PER_PAGE;
-        const endIdx = Math.min(startIdx + QUESTIONS_PER_PAGE, quizData.length);
-        const pageQuestions = quizData.slice(startIdx, endIdx);
-        
-        const totalReward = parseFloat(localStorage.getItem('total_reward_claimed') || '0.00').toFixed(2);
-        
-        document.getElementById("quizSection").querySelector('h3').innerHTML = 
-            `🎯 Quiz Questions (Page ${currentPage} of ${totalPages}) - Earned: ${totalReward} USDC`;
-
-        pageQuestions.forEach((item, index) => {
-            const globalIndex = startIdx + index;
-            const quizDiv = document.createElement('div');
-            quizDiv.className = 'quiz-container';
-            quizDiv.id = `q-${globalIndex}`;
-            
-            const rewardedQuestions = JSON.parse(localStorage.getItem('rewarded_q') || '[]');
-            const isDisabled = rewardedQuestions.includes(globalIndex);
-
-            quizDiv.innerHTML = `
-                <h4>Question ${globalIndex + 1}: ${item.question} 
-                    ${isDisabled ? '<span style="color:var(--color-success); font-size:14px; margin-left:10px;">✅ Rewarded</span>' : ''}
-                </h4>
-                <div class="question-options">
-                    ${item.options.map(option => `
-                        <label>
-                            <input type="radio" name="question-${globalIndex}" value="${option}" ${isDisabled ? 'disabled' : ''}>
-                            ${option}
-                        </label>
-                    `).join('')}
-                </div>
-            `;
-            container.appendChild(quizDiv);
-        });
-
-        const savedAnswers = JSON.parse(localStorage.getItem('quiz_state') || '{}');
-        pageQuestions.forEach((item, index) => {
-            const globalIndex = startIdx + index;
-            const savedValue = savedAnswers[`q-${globalIndex}`];
-            if (savedValue) {
-                const input = document.querySelector(`input[name="question-${globalIndex}"][value="${savedValue}"]`);
-                if (input) input.checked = true;
-            }
-        });
-
-        document.querySelectorAll('.quiz-container input').forEach(input => {
-            input.addEventListener('change', saveState);
-        });
-
-        const submitBtn = document.getElementById("submitQuizBtn");
-        submitBtn.style.display = 'block';
-        submitBtn.disabled = false;
-        submitBtn.innerText = currentPage < totalPages 
-            ? `Submit Page ${currentPage} & Claim Rewards` 
-            : `Finish Quiz & Claim Final Rewards`;
-    }
-
-    // --- 4. CONNECT WALLET HANDLER ---
-    document.getElementById("connectBtn").onclick = async () => {
-        if (!window.ethereum) { return alert("MetaMask or compatible wallet is not installed."); }
-        
-        try {
-            const accounts = await window.ethereum.request({ method: "eth_requestAccounts" });
-            userAccount = accounts[0].toLowerCase(); 
-
-            const savedAddress = localStorage.getItem('quiz_connected_address');
-            
-            if (savedAddress && savedAddress !== userAccount) {
-                localStorage.clear(); 
-                currentPage = 1;
-                fetchQuizQuestions(); 
-                return;
-            }
-            
-            localStorage.setItem('quiz_connected_address', userAccount);
-
-            document.getElementById("status").innerHTML = `<span class="status-connected">✅ Connected: ${truncateAddress(userAccount)}</span>`;
-            document.getElementById("connectBtn").style.display = 'none'; 
-            toggleQuizSection(true); 
-
-            if (localStorage.getItem('total_reward_claimed') && currentPage > totalPages) {
-                 handleQuizComplete(localStorage.getItem('total_reward_claimed'));
-            } else {
-                renderQuiz();
-            }
-
-        } catch (e) {
-            document.getElementById("status").innerText = "❌ Wallet connection failed.";
-            console.error("Wallet connection error:", e);
-        }
-    };
-    
-    // --- 5. REWARD FUNCTION ---
-    async function rewardQuestion(questionIndex) {
-      document.getElementById("submitQuizBtn").disabled = true; 
-      
-      const rewardedQuestions = JSON.parse(localStorage.getItem('rewarded_q') || '[]');
-      if (rewardedQuestions.includes(questionIndex)) {
-        return { success: true, rewardAmount: "0.05" }; 
-      }
-      
-      updateLoader(`⏳ Processing reward for Question ${questionIndex + 1}...`);
-
-      try {
-        const res = await fetch(`${BACKEND}/reward`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ 
-            userAddress: userAccount,
-            questionIndex: questionIndex
-          })
-        });
-
-        const data = await res.json();
-
-        if (!data.success) { 
-            updateLoader(`<span style="color:var(--color-error)">❌ Tx Error (Q${questionIndex + 1}): ${data.message}</span>`);
-            return false;
-        }
-        
-        const earned = parseFloat(localStorage.getItem('total_reward_claimed') || '0.00') + parseFloat(data.rewardAmount);
-        localStorage.setItem('total_reward_claimed', earned.toFixed(2));
-        
-        rewardedQuestions.push(questionIndex);
-        localStorage.setItem('rewarded_q', JSON.stringify(rewardedQuestions));
-
-        loadServerBalance(); 
-        return { success: true, rewardAmount: data.rewardAmount };
-
-      } catch (e) {
-        updateLoader(`<span style="color:var(--color-error)">❌ Network Error (Q${questionIndex + 1})</span>`);
-        console.error("Reward network error:", e);
-        return false;
-      }
-    }
-
-    // --- 6. QUIZ SUBMISSION HANDLER ---
-    document.getElementById("submitQuizBtn").onclick = async () => {
-        if (!userAccount) { return alert("Please connect your wallet first."); }
-        
-        document.querySelectorAll('.quiz-container').forEach(el => el.classList.remove('error-highlight'));
-        
-        const startIdx = (currentPage - 1) * QUESTIONS_PER_PAGE;
-        const endIdx = Math.min(startIdx + QUESTIONS_PER_PAGE, quizData.length);
-        
-        let allAnswered = true;
-        let successfulRewards = 0;
-        const initialReward = parseFloat(localStorage.getItem('total_reward_claimed') || '0.00');
-
-        for (let i = startIdx; i < endIdx; i++) {
-            const selectedRadio = document.querySelector(`input[name="question-${i}"]:checked`);
-            if (!selectedRadio) {
-                document.getElementById(`q-${i}`).classList.add('error-highlight');
-                allAnswered = false;
-            }
-        }
-        
-        if (!allAnswered) {
-            document.getElementById("submitQuizBtn").disabled = false;
-            document.getElementById("loader").style.display = 'none';
-            return document.getElementById("status").innerHTML = `<span style="color:var(--color-error)">❌ Please answer all questions on this page.</span>`;
-        }
-
-        for (let i = startIdx; i < endIdx; i++) {
-            const questionItem = quizData[i];
-            const selectedRadio = document.querySelector(`input[name="question-${i}"]:checked`);
-            const userAnswer = selectedRadio.value;
-            const correctAnswer = questionItem.answer; 
-
-            if (userAnswer === correctAnswer) {
-                const result = await rewardQuestion(i);
-                if (result.success) successfulRewards++;
-            } else {
-                document.getElementById(`q-${i}`).classList.add('error-highlight');
-                updateLoader(`Question ${i + 1} is incorrect. Moving to next question...`);
-            }
-        }
-        
-        const finalReward = parseFloat(localStorage.getItem('total_reward_claimed') || '0.00').toFixed(2);
-        const rewardDiff = (finalReward - initialReward).toFixed(2);
-
-        document.getElementById("status").innerHTML = `
-            <span style="color:var(--color-primary); font-weight:600">✅ Page ${currentPage} Submission Complete!</span><br>
-            Received <b>${rewardDiff} USDC</b> for ${successfulRewards} correct answers on this page.
-        `;
-        
-        if (currentPage < totalPages) {
-            currentPage++;
-            saveState();
-            renderQuiz();
-        } else {
-            handleQuizComplete(finalReward);
-        }
-    };
-
-    // --- INITIALIZATION ---
-    loadServerBalance();
-    fetchQuizQuestions();
-    toggleQuizSection(false); 
-
-    if (window.ethereum && window.ethereum.selectedAddress) {
-        document.getElementById("connectBtn").click();
-    }
-  </script>
+loadBalance();
+loadQuiz();
+loadLeaderboard();
+</script>
 </body>
 </html>
