@@ -6,7 +6,7 @@
   <!-- Fonts -->
   <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600&display=swap" rel="stylesheet">
 
-  <!-- Ethers (REQUIRED for wallet stability) -->
+  <!-- Ethers -->
   <script src="https://cdn.jsdelivr.net/npm/ethers@6.10.0/dist/ethers.umd.min.js"></script>
 
   <style>
@@ -59,8 +59,11 @@
   <button id="connectBtn">Connect Wallet</button>
   <p id="status">Disconnected</p>
 
-  <div id="quiz"></div>
-  <button id="submitBtn">Submit Page</button>
+  <!-- QUIZ (HIDDEN UNTIL CONNECT) -->
+  <div id="quizSection" style="display:none">
+    <div id="quiz"></div>
+    <button id="submitBtn">Submit Page</button>
+  </div>
 
   <hr>
 
@@ -74,12 +77,14 @@
 
 const BACKEND = "https://arc-quiz-dapp.onrender.com";
 const QUESTIONS_PER_PAGE = 4;
+const REWARD_PER_QUESTION = 0.2;
 
 /* ================= STATE ================= */
 
 let account = null;
 let quiz = [];
 let page = 1;
+let totalEarned = 0;
 
 /* ================= HELPERS ================= */
 
@@ -93,11 +98,10 @@ async function loadBalance() {
   try {
     const r = await fetch(`${BACKEND}/balance`);
     const d = await r.json();
-
     document.getElementById("serverBalance").innerHTML =
       `Reward Pool: <b>${d.usdc} USDC</b><br>
        <small>Native Gas: ${d.native} USDC</small>`;
-  } catch (e) {
+  } catch {
     document.getElementById("serverBalance").innerText =
       "Backend Connection Error";
   }
@@ -106,14 +110,9 @@ async function loadBalance() {
 /* ================= LOAD QUIZ ================= */
 
 async function loadQuiz() {
-  try {
-    const r = await fetch(`${BACKEND}/quiz`);
-    quiz = await r.json();
-    renderQuiz();
-  } catch (e) {
-    document.getElementById("quiz").innerText =
-      "Failed to load quiz questions.";
-  }
+  const r = await fetch(`${BACKEND}/quiz`);
+  quiz = await r.json();
+  renderQuiz();
 }
 
 /* ================= RENDER QUIZ ================= */
@@ -143,10 +142,7 @@ function renderQuiz() {
 /* ================= SUBMIT PAGE ================= */
 
 document.getElementById("submitBtn").onclick = async () => {
-  if (!account) {
-    alert("Connect wallet first");
-    return;
-  }
+  document.getElementById("submitBtn").disabled = true;
 
   const start = (page - 1) * QUESTIONS_PER_PAGE;
   const end = Math.min(start + QUESTIONS_PER_PAGE, quiz.length);
@@ -156,7 +152,7 @@ document.getElementById("submitBtn").onclick = async () => {
     if (!selected) continue;
 
     if (selected.value === quiz[i].answer) {
-      await fetch(`${BACKEND}/reward`, {
+      const r = await fetch(`${BACKEND}/reward`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -164,37 +160,51 @@ document.getElementById("submitBtn").onclick = async () => {
           questionIndex: i
         })
       });
+
+      const d = await r.json();
+      if (d.success) totalEarned += REWARD_PER_QUESTION;
     }
   }
 
   page++;
-  if (start < quiz.length) {
+
+  if ((page - 1) * QUESTIONS_PER_PAGE < quiz.length) {
+    document.getElementById("submitBtn").disabled = false;
     renderQuiz();
+  } else {
+    showCompletion();
   }
 
   loadLeaderboard();
   loadBalance();
 };
 
+/* ================= COMPLETION ================= */
+
+function showCompletion() {
+  document.getElementById("quizSection").innerHTML = `
+    <h2>🎉 Congratulations!</h2>
+    <p>You have completed the Arc Quiz successfully.</p>
+    <h3>Total Earned: <b>${totalEarned.toFixed(2)} USDC</b></h3>
+    <p>Thanks for participating 🚀</p>
+  `;
+}
+
 /* ================= LEADERBOARD ================= */
 
 async function loadLeaderboard() {
-  try {
-    const r = await fetch(`${BACKEND}/leaderboard`);
-    const d = await r.json();
+  const r = await fetch(`${BACKEND}/leaderboard`);
+  const d = await r.json();
 
-    document.getElementById("participants").innerText = d.participants;
+  document.getElementById("participants").innerText = d.participants;
 
-    const list = document.getElementById("leaderboardList");
-    list.innerHTML = "";
+  const list = document.getElementById("leaderboardList");
+  list.innerHTML = "";
 
-    d.leaderboard.slice(0, 10).forEach((e, i) => {
-      list.innerHTML +=
-        `<li>#${i + 1} ${truncate(e.address)} — ${e.reward} USDC</li>`;
-    });
-  } catch (e) {
-    console.error("Leaderboard error", e);
-  }
+  d.leaderboard.slice(0, 10).forEach((e, i) => {
+    list.innerHTML +=
+      `<li>#${i + 1} ${truncate(e.address)} — ${e.reward} USDC</li>`;
+  });
 }
 
 /* ================= WALLET CONNECT ================= */
@@ -210,16 +220,19 @@ document.getElementById("connectBtn").onclick = async () => {
   });
 
   account = accs[0];
+
   document.getElementById("status").innerText =
     "Connected: " + truncate(account);
 
-  document.getElementById("connectBtn").style.display = "none";
+  document.getElementById("connectBtn").disabled = true;
+  document.getElementById("quizSection").style.display = "block";
+
+  loadQuiz();
 };
 
 /* ================= INIT ================= */
 
 loadBalance();
-loadQuiz();
 loadLeaderboard();
 </script>
 </body>
